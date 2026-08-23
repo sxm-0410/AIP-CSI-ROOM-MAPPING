@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Generated data & models (regenerate with the scripts)
+data/sessions/*.npz
+data/raw/*.csv
+models/*.pkl
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

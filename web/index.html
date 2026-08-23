@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wi-Fi CSI Room Mapping</title>
+<style>
+  :root { --bg:#1a2340; --card:#243157; --accent:#2dd4bf; --ink:#eaf0ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,Segoe UI,Roboto,sans-serif;
+         background:var(--bg); color:var(--ink); min-height:100vh; }
+  .wrap { max-width:640px; margin:0 auto; padding:32px 20px; }
+  h1 { font-size:1.5rem; margin:0 0 4px; }
+  .sub { color:#9fb0d8; margin:0 0 24px; font-size:.9rem; }
+  #status { font-size:.85rem; color:var(--accent); margin-bottom:16px;
+            min-height:1.2em; }
+  #grid { display:grid; gap:10px; }
+  .cell { border-radius:12px; padding:20px 12px; min-height:96px;
+          display:flex; flex-direction:column; justify-content:center;
+          align-items:center; background:var(--card);
+          border:1px solid #35477a; transition:background .3s; }
+  .cell .name { font-weight:600; letter-spacing:.02em; }
+  .cell .pct { font-size:1.4rem; margin-top:6px; font-variant-numeric:tabular-nums; }
+  .cell.top { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent) inset; }
+  .foot { margin-top:24px; font-size:.8rem; color:#7183ad; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Wi-Fi CSI Room Mapping</h1>
+    <p class="sub">Live occupant-zone heatmap &mdash; probabilities from CSI</p>
+    <div id="status">connecting&hellip;</div>
+    <div id="grid"></div>
+    <p class="foot">Polling <code>/heatmap</code> every second. Backend: router &rarr; ESP32 (later).</p>
+  </div>
+<script>
+const gridEl = document.getElementById('grid');
+const statusEl = document.getElementById('status');
+
+function color(p) {
+  // teal ramp: low = card blue, high = accent teal
+  const a = Math.max(0, Math.min(1, p));
+  const c1 = [36,49,87], c2 = [45,212,191];
+  const mix = c1.map((v,i)=>Math.round(v+(c2[i]-v)*a));
+  return `rgb(${mix.join(',')})`;
+}
+
+async function tick() {
+  try {
+    const r = await fetch('/heatmap');
+    const d = await r.json();
+    gridEl.style.gridTemplateColumns = `repeat(${d.cols}, 1fr)`;
+    let cells = Array.from({length:d.rows*d.cols}, ()=>({name:'', p:0}));
+    for (const z of d.zones) {
+      const idx = z.row*d.cols + z.col;
+      cells[idx] = { name:z.name, p:d.grid[z.row][z.col] };
+    }
+    const maxP = Math.max(...cells.map(c=>c.p));
+    gridEl.innerHTML = cells.map(c => `
+      <div class="cell ${d.ready && c.p===maxP && maxP>0 ? 'top':''}"
+           style="background:${color(c.p)}">
+        <div class="name">${c.name || '&mdash;'}</div>
+        <div class="pct">${(c.p*100).toFixed(0)}%</div>
+      </div>`).join('');
+    statusEl.textContent = d.error
+      ? d.error
+      : `predicted zone: ${d.predicted}`;
+  } catch (e) {
+    statusEl.textContent = 'waiting for server…';
+  }
+}
+setInterval(tick, 1000);
+tick();
+</script>
+</body>
+</html>
