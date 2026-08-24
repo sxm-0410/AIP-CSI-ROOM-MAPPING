@@ -8,9 +8,10 @@ venv/
 env/
 
 # Generated data & models (regenerate with the scripts)
-data/sessions/*.npz
+data/datasets/*.npz
 data/raw/*.csv
 models/*.pkl
+models/*.npz
 
 # OS / editor
 .DS_Store

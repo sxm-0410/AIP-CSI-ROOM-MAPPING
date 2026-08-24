@@ -1,46 +1,59 @@
 #!/usr/bin/env python3
-"""Capture one labelled session from the configured backend.
+"""Capture multi-node snapshots from the configured backend into a dataset.
 
-    # from the router (current)
-    python scripts/capture.py --zone desk --frames 1500
+    # router today (label the obstacle's grid cell for supervised Phase 1/2):
+    python scripts/capture.py --cell 5 --frames 500
 
-    # once on ESP32, only the config/flag changes:
-    python scripts/capture.py --zone desk --backend esp32
+    # empty room (for Phase 3 boundary scan):
+    python scripts/capture.py --empty --frames 500
+
+Switching to ESP32 later only needs --backend esp32 (or config).
 """
 from __future__ import annotations
 
 import argparse
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from csi_mapping import load_config
-from csi_mapping.capture import open_source, collect_session
-from csi_mapping.data.storage import Session, save_session
+import numpy as np
+
+from wifi_csi_spatial import load_config
+from wifi_csi_spatial.capture import open_source, collect
+from wifi_csi_spatial.dataset import SpatialDataset
+from wifi_csi_spatial.geometry.room import cell_center
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--zone", required=True, help="ground-truth zone label")
-    ap.add_argument("--frames", type=int, default=1500)
-    ap.add_argument("--backend", default=None,
-                    help="override config backend: router|esp32|synthetic")
-    ap.add_argument("--id", default=None, help="session id (default: zone+time)")
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--cell", type=int, help="ground-truth grid cell of obstacle")
+    g.add_argument("--empty", action="store_true", help="empty room")
+    ap.add_argument("--frames", type=int, default=500)
+    ap.add_argument("--backend", default=None)
+    ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
     cfg = load_config()
     if args.backend:
         cfg.backend = args.backend
 
-    sid = args.id or f"{args.zone}_{int(time.time())}"
-    print(f"capturing {args.frames} frames from '{cfg.backend}' "
-          f"backend for zone '{args.zone}'...")
-    with open_source(cfg, zone=args.zone) as src:
-        ts, csi = collect_session(src, args.frames)
-    path = save_session(Session(sid, args.zone, ts, csi), cfg.data_dir)
-    print(f"saved {path}  ({csi.shape[0]} x {csi.shape[1]})")
+    with open_source(cfg, moving=False) as src:
+        csi, _ = collect(src, args.frames)          # (N, R, S)
+
+    if args.empty:
+        label = np.full(len(csi), cfg.n_cells)
+        xy = np.full((len(csi), 2), np.nan)
+        tag = "empty"
+    else:
+        label = np.full(len(csi), args.cell)
+        xy = np.tile(cell_center(args.cell, cfg), (len(csi), 1))
+        tag = f"cell{args.cell}"
+
+    out = Path(args.out or f"{cfg.data_dir}/capture_{tag}.npz")
+    SpatialDataset(csi, label, xy, cfg.n_cells).save(out)
+    print(f"captured {len(csi)} snapshots x {cfg.n_rx} nodes -> {out}")
 
 
 if __name__ == "__main__":

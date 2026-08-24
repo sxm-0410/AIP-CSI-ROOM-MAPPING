@@ -3,18 +3,18 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "csi-room-mapping"
-version = "0.2.0"
-description = "Wi-Fi CSI room mapping — occupant-zone inference from Channel State Information"
+name = "wifi-csi-spatial"
+version = "0.3.0"
+description = "Wi-Fi CSI Spatial Mapping — obstacle detection, multi-node sensing, and room boundary estimation from Channel State Information"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "scipy>=1.10", "scikit-learn>=1.3", "pyyaml>=6.0"]
 
 [project.optional-dependencies]
-xgb = ["xgboost>=2.0"]
-demo = ["fastapi>=0.110", "uvicorn>=0.29"]
+cnn = ["torch>=2.2"]
+demo = ["fastapi>=0.110", "uvicorn>=0.29", "websockets>=12.0"]
 esp32 = ["pyserial>=3.5"]
 dev = ["pytest>=8.0"]
 
-[tool.setuptools]
-packages = ["csi_mapping"]
+[tool.setuptools.packages.find]
+include = ["wifi_csi_spatial*"]

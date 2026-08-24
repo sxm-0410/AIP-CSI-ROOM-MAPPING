@@ -1,41 +1,50 @@
-# Wi-Fi CSI Room Mapping — runtime config.
-# Everything here overrides the defaults in csi_mapping/config.py.
-# Delete this file and the project still runs on baked-in defaults.
+# Wi-Fi CSI Spatial Mapping — runtime config.
+# Overrides the defaults in wifi_csi_spatial/config.py. Delete this file and the
+# project still runs on baked-in defaults.
 
 # --- capture backend -------------------------------------------------
-# synthetic : no hardware, generated CSI (default so the demo runs anywhere)
-# router    : current hardware — reads CSV file or udp://host:port
-# esp32     : future hardware — reads USB serial (needs pyserial)
+# synthetic : no hardware, room-simulator CSI (default so the demo runs anywhere)
+# router    : current hardware — CSV file or udp://host:port, one line per link
+# esp32     : future hardware — USB serial per node (needs pyserial)
 backend: synthetic
-n_subcarriers: 64
-sample_rate_hz: 100.0
-
-# router backend source: a CSV log, or a live "udp://0.0.0.0:5500" stream
+n_subcarriers: 256          # 80 MHz -> finer delay resolution for Phase 3
+sample_rate_hz: 50.0
 router_source: data/raw/router_csi.csv
-
-# esp32 backend (used later)
-esp32_port: /dev/ttyUSB0
+esp32_port: /dev/ttyUSB0    # comma-separate one port per RX node
 esp32_baud: 921600
 
-# --- cleaning (step 1: clean the signal) -----------------------------
+# --- room geometry (metres) -----------------------------------------
+room_w: 5.0
+room_h: 4.0
+tx: [0.05, 0.05]
+rx:
+  - [4.95, 0.05]
+  - [4.95, 2.5]
+  - [4.95, 3.95]
+  - [0.05, 3.95]
+wall_reflectivity: 0.45
+obstacle_reflectivity: 1.6   # obstacle scatter strength (position fingerprint)
+shadow_depth: 0.7            # max line-of-sight attenuation on a link
+shadow_sigma: 1.0            # shadow corridor width (m)
+
+# --- localization grid (Phase 1/2) ----------------------------------
+grid_rows: 4
+grid_cols: 4
+
+# --- boundary reconstruction (Phase 3) ------------------------------
+recon_res: 0.125
+recon_margin: 0.5
+
+# --- cleaning -------------------------------------------------------
 hampel_window: 5
 hampel_sigma: 3.0
 butter_cutoff_hz: 10.0
 butter_order: 4
 
-# --- features / windowing (step 2: collect & extract) ----------------
-window: 128
-hop: 64
+# --- features / model -----------------------------------------------
+pca_components: 64
+cnn_epochs: 25
 
-# --- room layout / occupant zones ------------------------------------
-grid_rows: 2
-grid_cols: 2
-zones:
-  - {name: empty,  row: 0, col: 0}
-  - {name: desk,   row: 0, col: 1}
-  - {name: door,   row: 1, col: 0}
-  - {name: window, row: 1, col: 1}
-
-# --- paths -----------------------------------------------------------
-data_dir: data/sessions
-model_path: models/zone_clf.pkl
+# --- paths ----------------------------------------------------------
+data_dir: data/datasets
+model_dir: models

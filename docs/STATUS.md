@@ -1,51 +1,47 @@
-# Progress Status — Review 2
+# Progress Status — Phases 1-3 complete
 
-Snapshot of what runs today against the four-step roadmap. Signal source is a
-**Wi-Fi router**; the ESP32 path is stubbed for a later, drop-in swap.
+Rebuilt around the **Review-1 roadmap** (spatial mapping, not just occupant
+zones). Signal source is a **Wi-Fi router**; ESP32-S3 nodes are stubbed for a
+drop-in swap. Everything below runs end-to-end on the synthetic room simulator
+and is exercised by `tests/test_spatial.py`.
 
-## Milestone: live CSI capture works
+## Architecture in place (Review-1 slide 3)
 
-- CSI frames captured from the router and standardised into a single
-  `CSIFrame` type (`capture/base.py`).
-- Same interface already implemented for ESP32 USB-serial (`capture/esp32.py`)
-  and for a synthetic generator used for offline runs and tests.
-- **Why USB/serial, not Wi-Fi streaming for the ESP32 later:** the ESP32 has a
-  single radio — streaming out over Wi-Fi would compete with the sensing radio
-  and corrupt the very signal we measure. USB keeps sensing clean. The router
-  backend sidesteps this by logging on the AP itself.
+- Multi-node capture (`capture/`): router (current), esp32 (stub), synthetic
+  simulator — one `Snapshot` = CSI for all TX→RX links at an instant.
+- Cleaning (`preprocessing/`): CFO/SFO phase sanitization, Hampel outlier
+  rejection, Butterworth low-pass, PCA reduction.
+- Model (`models/cnn1d.py`): PyTorch 1D-CNN on PCA features (sklearn fallback).
+- Serving (`api/server.py` + `web/index.html`): FastAPI + WebSocket → HTML5
+  Canvas floor-map.
 
-## Step 1 — Clean the signal  ✅ implemented
+## Phase 1 — Single obstacle detection ✅
 
-| piece | file | note |
-|-------|------|------|
-| Phase sanitization (CFO/SFO) | `preprocessing/phase.py` | per-frame linear phase detrend |
-| Hampel outlier rejection | `preprocessing/filters.py` | median/MAD, along time |
-| Butterworth low-pass | `preprocessing/filters.py` | SciPy `filtfilt`, EMA fallback |
+One TX→RX link → presence + coarse grid-cell localization via the
+Butterworth→PCA→1D-CNN pipeline (`phases/phase1_obstacle.py`). Establishes the
+single-link baseline (and its 2D ambiguity).
 
-## Step 2 — Collect & extract  ✅ pipeline ready, 🟡 real data pending
+## Phase 2 — Multi-node sensing ✅
 
-- Session storage across zones/sessions (`data/storage.py`, compact `.npz`).
-- Windowed feature extraction (`features/extract.py`): per-subcarrier amplitude
-  mean/std, phase std, temporal variance, total power.
-- **Open item:** collect multi-session *real* router captures per zone.
+Fuses all links (`phases/phase2_multinode.py`). `error_vs_nodes` sweeps 1→N
+nodes and reports localization error dropping as nodes are added — the concrete
+multi-node result. Same code as Phase 1 with a wider fan-in.
 
-## Step 3 — Model & validate  ✅ baseline in place
+## Phase 3 — Room boundary estimation ✅
 
-- XGBoost baseline with sklearn HistGradientBoosting fallback
-  (`models/baseline.py`).
-- Leave-one-session-out validation with confusion matrix
-  (`evaluation/validate.py`) — the realistic, no-leakage score.
-- **Next:** CNN / BiLSTM on raw windows behind the same `fit/predict` API.
-
-## Step 4 — Live heatmap demo  ✅ working stand-in
-
-- FastAPI service streams frames in a background thread, runs the shared
-  transform on a rolling window, serves per-zone probabilities at `/heatmap`
-  (`api/server.py`).
-- Dependency-free web viewer (`web/index.html`); the roadmap's React front-end
-  can consume the same endpoint later.
+Ellipse back-projection tomography (`phases/phase3_boundary.py`):
+delay pseudo-spectrum per link → back-project onto the room grid at each cell's
+reflection delay → walls reinforce → bounding box → **IoU vs true room**.
+Uses a CFO-calibrated empty-room reference scan.
 
 ## Verified end-to-end
 
-`make_demo_data.py → train.py → uvicorn api.server` runs clean, and
-`tests/test_pipeline.py` asserts LOSO accuracy beats chance on synthetic data.
+`simulate_room.py → train.py → uvicorn api.server` runs clean; the test suite
+asserts Phase-1 presence detection beats chance, multi-node does not hurt (and
+generally improves) localization, and Phase-3 boundary IoU clears threshold.
+
+## Next (Phases 4-5)
+
+- Phase 4: fit full room polygons / stitch multiple boundary scans into a floor
+  plan (not just a bounding rectangle).
+- Phase 5: real-time streaming inference on live ESP32-S3 nodes.

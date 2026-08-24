@@ -3,74 +3,115 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Wi-Fi CSI Room Mapping</title>
+<title>Wi-Fi CSI Spatial Mapping</title>
 <style>
-  :root { --bg:#1a2340; --card:#243157; --accent:#2dd4bf; --ink:#eaf0ff; }
+  :root { --bg:#0f1830; --panel:#18233f; --ink:#eaf0ff; --muted:#8ea3d0;
+          --accent:#2dd4bf; --wall:#5a76c4; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:system-ui,Segoe UI,Roboto,sans-serif;
-         background:var(--bg); color:var(--ink); min-height:100vh; }
-  .wrap { max-width:640px; margin:0 auto; padding:32px 20px; }
-  h1 { font-size:1.5rem; margin:0 0 4px; }
-  .sub { color:#9fb0d8; margin:0 0 24px; font-size:.9rem; }
-  #status { font-size:.85rem; color:var(--accent); margin-bottom:16px;
-            min-height:1.2em; }
-  #grid { display:grid; gap:10px; }
-  .cell { border-radius:12px; padding:20px 12px; min-height:96px;
-          display:flex; flex-direction:column; justify-content:center;
-          align-items:center; background:var(--card);
-          border:1px solid #35477a; transition:background .3s; }
-  .cell .name { font-weight:600; letter-spacing:.02em; }
-  .cell .pct { font-size:1.4rem; margin-top:6px; font-variant-numeric:tabular-nums; }
-  .cell.top { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent) inset; }
-  .foot { margin-top:24px; font-size:.8rem; color:#7183ad; }
+         background:var(--bg); color:var(--ink); }
+  .wrap { max-width:760px; margin:0 auto; padding:28px 20px; }
+  h1 { font-size:1.4rem; margin:0 0 2px; }
+  .sub { color:var(--muted); font-size:.9rem; margin:0 0 18px; }
+  canvas { width:100%; height:auto; background:var(--panel); border-radius:12px;
+           border:1px solid #2b3a63; }
+  .row { display:flex; gap:18px; flex-wrap:wrap; margin-top:14px;
+         font-size:.85rem; color:var(--muted); }
+  .row b { color:var(--ink); font-variant-numeric:tabular-nums; }
+  .legend { display:flex; gap:14px; align-items:center; margin-top:10px;
+            font-size:.8rem; color:var(--muted); }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%;
+         margin-right:5px; vertical-align:middle; }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>Wi-Fi CSI Room Mapping</h1>
-    <p class="sub">Live occupant-zone heatmap &mdash; probabilities from CSI</p>
-    <div id="status">connecting&hellip;</div>
-    <div id="grid"></div>
-    <p class="foot">Polling <code>/heatmap</code> every second. Backend: router &rarr; ESP32 (later).</p>
+<div class="wrap">
+  <h1>Wi-Fi CSI Spatial Mapping</h1>
+  <p class="sub">Phase 1-3 live: obstacle detection &middot; multi-node fusion &middot; room boundary</p>
+  <canvas id="c" width="700" height="560"></canvas>
+  <div class="legend">
+    <span><span class="dot" style="background:#f4c04e"></span>TX/RX nodes</span>
+    <span><span class="dot" style="background:#2dd4bf"></span>estimated obstacle</span>
+    <span><span class="dot" style="background:#fff;border:1px solid #888"></span>ground truth</span>
+    <span><span class="dot" style="background:#5a76c4"></span>estimated boundary</span>
   </div>
+  <div class="row">
+    <span>status: <b id="st">connecting…</b></span>
+    <span>confidence: <b id="cf">—</b></span>
+    <span>boundary IoU: <b id="iou">—</b></span>
+  </div>
+</div>
 <script>
-const gridEl = document.getElementById('grid');
-const statusEl = document.getElementById('status');
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const PAD = 40;
 
-function color(p) {
-  // teal ramp: low = card blue, high = accent teal
-  const a = Math.max(0, Math.min(1, p));
-  const c1 = [36,49,87], c2 = [45,212,191];
-  const mix = c1.map((v,i)=>Math.round(v+(c2[i]-v)*a));
-  return `rgb(${mix.join(',')})`;
+function heat(p){ // teal ramp
+  const a=Math.max(0,Math.min(1,p)), c1=[24,35,63], c2=[45,212,191];
+  return `rgb(${c1.map((v,i)=>Math.round(v+(c2[i]-v)*a)).join(',')})`;
 }
 
-async function tick() {
-  try {
-    const r = await fetch('/heatmap');
-    const d = await r.json();
-    gridEl.style.gridTemplateColumns = `repeat(${d.cols}, 1fr)`;
-    let cells = Array.from({length:d.rows*d.cols}, ()=>({name:'', p:0}));
-    for (const z of d.zones) {
-      const idx = z.row*d.cols + z.col;
-      cells[idx] = { name:z.name, p:d.grid[z.row][z.col] };
+function draw(d){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if(!d.room) return;
+  const W=d.room.w, H=d.room.h;
+  const sx=(cv.width-2*PAD)/W, sy=(cv.height-2*PAD)/H, s=Math.min(sx,sy);
+  const X=x=>PAD+x*s, Y=y=>cv.height-PAD-y*s;   // flip y (origin bottom-left)
+
+  // grid heatmap
+  if(d.ready && d.grid_probs){
+    const gr=d.grid.rows, gc=d.grid.cols, cw=W/gc, ch=H/gr;
+    for(let r=0;r<gr;r++)for(let col=0;col<gc;col++){
+      const p=d.grid_probs[r*gc+col]||0;
+      ctx.fillStyle=heat(p);
+      ctx.fillRect(X(col*cw), Y((r+1)*ch), cw*s, ch*s);
     }
-    const maxP = Math.max(...cells.map(c=>c.p));
-    gridEl.innerHTML = cells.map(c => `
-      <div class="cell ${d.ready && c.p===maxP && maxP>0 ? 'top':''}"
-           style="background:${color(c.p)}">
-        <div class="name">${c.name || '&mdash;'}</div>
-        <div class="pct">${(c.p*100).toFixed(0)}%</div>
-      </div>`).join('');
-    statusEl.textContent = d.error
-      ? d.error
-      : `predicted zone: ${d.predicted}`;
-  } catch (e) {
-    statusEl.textContent = 'waiting for server…';
+    ctx.strokeStyle='#243257'; ctx.lineWidth=1;
+    for(let r=0;r<=gr;r++){ctx.beginPath();ctx.moveTo(X(0),Y(r*ch));ctx.lineTo(X(W),Y(r*ch));ctx.stroke();}
+    for(let col=0;col<=gc;col++){ctx.beginPath();ctx.moveTo(X(col*cw),Y(0));ctx.lineTo(X(col*cw),Y(H));ctx.stroke();}
   }
+
+  // true room walls
+  ctx.strokeStyle='#334876'; ctx.lineWidth=2;
+  ctx.strokeRect(X(0),Y(H),W*s,H*s);
+
+  // Phase-3 estimated boundary (dashed)
+  if(d.boundary && d.boundary.rect){
+    const [x0,y0,x1,y1]=d.boundary.rect;
+    ctx.save(); ctx.setLineDash([7,5]); ctx.strokeStyle='#7b93d8'; ctx.lineWidth=2.5;
+    ctx.strokeRect(X(x0),Y(y1),(x1-x0)*s,(y1-y0)*s); ctx.restore();
+  }
+
+  // nodes
+  const mark=(p,col,r)=>{ctx.fillStyle=col;ctx.beginPath();ctx.arc(X(p[0]),Y(p[1]),r,0,7);ctx.fill();};
+  if(d.nodes){ mark(d.nodes.tx,'#f4c04e',7); d.nodes.rx.forEach(p=>mark(p,'#f4c04e',5)); }
+
+  // ground truth + estimate
+  if(d.truth){ ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();
+    ctx.arc(X(d.truth[0]),Y(d.truth[1]),9,0,7);ctx.stroke(); }
+  if(d.ready && d.estimate && d.estimate.present && d.estimate.xy){
+    mark(d.estimate.xy,'#2dd4bf',9); }
 }
-setInterval(tick, 1000);
-tick();
+
+function apply(d){
+  draw(d);
+  document.getElementById('st').textContent =
+     d.error ? d.error : (d.estimate && d.estimate.present ? 'obstacle detected' : 'room empty');
+  document.getElementById('cf').textContent =
+     d.ready && d.estimate ? (d.estimate.confidence*100).toFixed(0)+'%' : '—';
+  document.getElementById('iou').textContent =
+     d.boundary && d.boundary.iou!=null ? d.boundary.iou.toFixed(3) : '—';
+}
+
+// WebSocket with polling fallback
+let ws;
+try {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onmessage = e => apply(JSON.parse(e.data));
+  ws.onerror = poll;
+} catch(e){ poll(); }
+function poll(){ setInterval(async()=>{
+  try{ apply(await (await fetch('/state')).json()); }catch(_){}
+},300); }
 </script>
 </body>
 </html>

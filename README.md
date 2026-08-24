@@ -1,40 +1,44 @@
-# Wi-Fi CSI Room Mapping
+# Wi-Fi CSI Spatial Mapping
 
-Infer **which zone of a room a person is in** from Wi-Fi Channel State
-Information (CSI) — no cameras, no wearables. The pipeline turns raw CSI into a
-live occupant-zone heatmap:
+Reconstruct indoor spatial information from Wi-Fi **Channel State Information
+(CSI)** — a low-cost, privacy-preserving alternative to LiDAR and cameras. CSI
+carries the amplitude and phase of every OFDM subcarrier, so the multipath
+reflections in a room encode its geometry. This repo turns that signal into
+obstacle locations and a room outline.
 
 ```
-capture  ->  clean  ->  features  ->  model  ->  live heatmap
+capture (multi-node) -> clean (CFO/SFO + Butterworth) -> PCA -> 1D-CNN / tomography -> live map
 ```
 
-> **Status — Progress Review 2.** Live CSI capture is working and the full
-> pipeline runs end-to-end on data. Signal is captured from a **Wi-Fi router**
-> today; the **ESP32** backend is already stubbed so the switch later is a
-> one-line config change. Currently in the *data collection* stage.
+> **Status.** Roadmap Phases **1-3 are implemented and run end-to-end**. Signal
+> comes from a **Wi-Fi router** today; the **ESP32-S3** backend is stubbed for a
+> one-line switch later.
 
----
+## Roadmap (from Review 1) — where we are
 
-## Why the capture backend is swappable
+| Phase | Goal | Status |
+|------:|------|--------|
+| 1 | Single obstacle detection | ✅ `phases/phase1_obstacle.py` |
+| 2 | Multi-node sensing | ✅ `phases/phase2_multinode.py` |
+| 3 | Room boundary estimation | ✅ `phases/phase3_boundary.py` |
+| 4 | Automatic floor-plan generation | ⏳ next |
+| 5 | Real-time spatial intelligence | ⏳ next |
 
-The signal source is the only part of a CSI project that depends on hardware.
-Everything downstream (cleaning, features, model, demo) is identical whether the
-bytes come from a router or an ESP32. So capture is a single interface:
+## What each phase does
 
-```python
-class CSISource:          # csi_mapping/capture/base.py
-    def frames(self) -> Iterator[CSIFrame]: ...
-```
+- **Phase 1 — Single obstacle detection.** From **one** TX→RX link, decide if an
+  obstacle is present and which coarse grid cell it's in. A single link is
+  inherently ambiguous in 2D — that's the motivation for Phase 2.
+- **Phase 2 — Multi-node sensing.** Fuse **all** TX→RX links. Independent
+  viewpoints resolve the ambiguity, so localization error drops. `error_vs_nodes`
+  reports accuracy as node count grows — the headline result.
+- **Phase 3 — Room boundary estimation.** Invert the empty-room multipath into a
+  floor outline by **ellipse back-projection**: each link's path-length spectrum
+  is back-projected onto the room grid; wall reflections reinforce where links
+  agree, tracing the walls. Scored by IoU against the true room.
 
-| backend      | file                        | status            |
-|--------------|-----------------------------|-------------------|
-| `router`     | `capture/router.py`         | **current**       |
-| `esp32`      | `capture/esp32.py`          | stubbed for later |
-| `synthetic`  | `capture/synthetic.py`      | offline dev/demo  |
-
-Switching hardware later = `backend: esp32` in `config.yaml`. No pipeline edits.
-
----
+Phases 1-2 follow the deck's stack exactly: **noise filtering (Butterworth) →
+feature reduction (PCA) → 1D-CNN** (PyTorch, with an sklearn fallback).
 
 ## Quickstart (no hardware needed)
 
@@ -42,80 +46,69 @@ Switching hardware later = `backend: esp32` in `config.yaml`. No pipeline edits.
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 1. generate a synthetic multi-session dataset (stands in for real captures)
-python scripts/make_demo_data.py --sessions 3
+# 1. simulate a room dataset (multi-node CSI across obstacle positions)
+python scripts/simulate_room.py --train 2500 --test 800
 
-# 2. validate (leave-one-session-out) + train the final model
+# 2. train + evaluate all three phases, save models
 python scripts/train.py
 
-# 3. run the live heatmap demo, then open http://127.0.0.1:8000
+# 3. live demo (FastAPI + WebSocket), then open http://127.0.0.1:8000
 uvicorn api.server:app
 ```
 
-Run the tests:
+Tests:
 
 ```bash
-python -m pytest -q          # or: python tests/test_pipeline.py
+python -m pytest -q          # or: python tests/test_spatial.py
 ```
 
-### Capturing real data from the router
+### With a real Wi-Fi router
+
+Set `backend: router` in [config.yaml](config.yaml) and point `router_source` at
+your CSI tool's CSV log or a `udp://host:port` stream (one line per link:
+`timestamp,rx_id,rssi,re0,im0,...`). Then:
 
 ```bash
-# point config.router_source at your CSV log or a udp://host:port stream,
-# then set backend: router in config.yaml
-python scripts/capture.py --zone desk   --frames 1500
-python scripts/capture.py --zone empty  --frames 1500
+python scripts/capture.py --cell 5 --frames 500     # obstacle in grid cell 5
+python scripts/capture.py --empty  --frames 500     # empty-room boundary scan
 python scripts/train.py
 ```
 
-The router logger just needs to emit one line per frame:
-`timestamp,rssi,re0,im0,re1,im1,...` (see `capture/router.py`).
+Moving to ESP32-S3 nodes later is just `backend: esp32` (+ `pyserial`) — no
+pipeline changes.
 
----
-
-## How it maps to the roadmap
-
-| Review-2 roadmap step        | Where it lives                                   |
-|------------------------------|--------------------------------------------------|
-| 1. Clean the signal          | `preprocessing/phase.py` (CFO/SFO), `filters.py` (Hampel → Butterworth) |
-| 2. Collect & extract         | `data/storage.py` (sessions), `features/extract.py` |
-| 3. Model & validate          | `models/baseline.py` (XGBoost), `evaluation/validate.py` (LOSO) |
-| 4. Live heatmap demo         | `api/server.py` (FastAPI) + `web/index.html`     |
-
-See [`docs/STATUS.md`](docs/STATUS.md) for the detailed progress breakdown.
-
----
-
-## Project layout
+## Architecture (matches Review-1 slide 3)
 
 ```
-csi_mapping/
-  capture/       router (now) · esp32 (later) · synthetic — one interface
-  preprocessing/ phase sanitization, Hampel + Butterworth
-  features/      windowed amplitude/phase features
-  models/        XGBoost baseline (sklearn fallback)
-  evaluation/    leave-one-session-out validation
-  pipeline.py    capture/session -> features (shared by train & serve)
-scripts/         make_demo_data · capture · train
-api/ + web/      FastAPI heatmap service + viewer
-tests/           end-to-end smoke tests on synthetic data
+ESP32/Router TX -> multipath -> RX nodes (CSI) -> WebSocket -> pipeline -> dashboard
+```
+
+```
+wifi_csi_spatial/
+  geometry/      room model + multipath physics (shared by sim, Phase 3, viz)
+  capture/       router (now) · esp32 (later) · synthetic — one Snapshot interface
+  preprocessing/ CFO/SFO phase sanitization · Hampel + Butterworth · PCA
+  features/      per-link amplitude/phase, stacked across nodes
+  models/        1D-CNN (PyTorch, sklearn fallback)
+  phases/        phase1 · phase2 (+ error_vs_nodes) · phase3 boundary tomography
+  dataset.py     labelled multi-node sample storage
+scripts/         simulate_room · train · capture
+api/ + web/      FastAPI + WebSocket · HTML5 Canvas floor-map viewer
+tests/           end-to-end smoke tests
 ```
 
 ## Design notes
 
-- **Runs anywhere.** XGBoost → sklearn and SciPy → EMA fallbacks mean the core
-  pipeline works with just numpy if needed.
-- **No train/serve skew.** Training and the live demo call the *same*
-  `frames_to_features`.
-- **Honest evaluation.** Leave-one-session-out holds out whole captures, so
-  accuracy isn't inflated by correlated neighbouring windows.
+- **Backend-agnostic capture.** Router, ESP32, and simulator all yield the same
+  `Snapshot` (CSI for every link at one instant); nothing downstream branches on
+  hardware.
+- **Runs anywhere.** Torch→sklearn and SciPy→EMA fallbacks keep the core working
+  even without the heavy deps.
+- **Honest geometry.** The simulator and Phase 3 share one `Room` model, so the
+  reconstruction is scored against exactly the layout that produced the signal.
+- **Physics, not magic.** Phase 3 assumes a one-time CFO-calibrated empty-room
+  scan — a raw per-frame offset is indistinguishable from a real delay, so we
+  calibrate before boundary mapping (standard practice). Resolution scales with
+  bandwidth and node geometry.
 
-## Roadmap
-
-- [x] Live CSI capture (router) + USB/serial-clean path
-- [x] Phase sanitization + amplitude denoising
-- [x] Feature extraction + XGBoost baseline + LOSO
-- [x] FastAPI + web live heatmap
-- [ ] Multi-session real-world data collection across zones
-- [ ] CNN / BiLSTM model on raw windows
-- [ ] ESP32 backend on real hardware
+See [`docs/STATUS.md`](docs/STATUS.md) for the detailed progress breakdown.
