@@ -260,7 +260,7 @@ oled: OLED found at 0x3C on SDA=21 SCL=22 ...    <- screen detected (see step 12
 scan: calibrating: keep the room empty           <- learning the empty path (~12 s)
 MOTION,<ms>,<rssi>,<std>,<state>,<thr>,<base>,<pct>     <- ~10 lines/second
 CSI_DATA,<seq>,<ms>,<rssi>,128,[...]                     <- ~10 lines/second
-scan: calibrated: base=-38.0 dBm thr_std=3.02 dB         <- ready
+scan: calibrated: base=-42.4 dBm thr_std=3.52 dB thr_level=3.87 dB   <- ready
 csi: probe ok=... timeout=0 restarts=0 csi_dropped=0     <- every 3 s
 ```
 
@@ -421,11 +421,11 @@ Change with `idf.py menuconfig` -> **Motion Detector Configuration**, then **reb
 |---|---|---|
 | LED GPIO | 19 | pin for the optional LED |
 | RSSI sample period | 100 ms | how often the signal is read |
-| Sliding window | 20 samples | samples per variation window (2 s) |
-| Calibration length | 100 windows | how long it learns the empty path (about 12 s) |
-| Threshold sensitivity k (x10) | 40 (= 4.0) | alarm limit = learned mean + k x spread. **Lower = more sensitive** |
+| Sliding window | 10 samples | samples per variation window (1 s). Smaller = faster reaction |
+| Calibration length | 100 windows (max 200) | how long it learns the empty path (about 12 s). Only the quietest 60% sets the limits, so a short walk-by while learning is tolerated |
+| Threshold sensitivity k (x10) | 40 (= 4.0) | alarm limit = learned median + k x robust spread (never below 2x the normal level). **Lower = more sensitive** |
 | Minimum std margin (dB x10) | 5 (= 0.5 dB) | minimum gap above the learned level |
-| Level shift (dB) | 4 | sustained RSSI change from baseline that counts as an object. **Lower = more sensitive** |
+| Level shift floor (dB) | 2 | lowest sustained RSSI change from baseline that can count as an object. The real limit is learned from the empty path's own jitter (shown as `thr_level` in the boot log); this is only its floor |
 | Hold time | 2000 ms | alarm stays on this long after the last trigger |
 | Ping the router | on | keeps signal/CSI updating (needed on an idle network) |
 | Ping interval | 100 ms | = CSI rate (10/s). Faster pings can be throttled by routers |
@@ -487,8 +487,11 @@ tests/test_ml.py        Python tests
 **How detection works.** The ESP32 reads the router's signal strength (RSSI) 10 times per second and, because it pings
 the router, also receives channel state information (CSI): amplitude of 62 subcarriers. For its first ~12 s it learns
 the typical RSSI and the typical amount of fluctuation on the empty path. After that it raises an alarm when the
-fluctuation exceeds the learned limit (something moving) or the average level moves more than 4 dB from the baseline
-(something left in the path), holding the alarm for 2 s after the last trigger.
+fluctuation over the last 1 s exceeds the learned limit (something moving) or the average of the last 4 samples moves
+further from the baseline than the learned level limit (something left in the path), holding the alarm for 2 s after
+the last trigger. The limits come from medians of the quietest 60% of the learning period, so a short walk-by while
+learning does not ruin them. **Limitation:** signal strength (RSSI) is noisy (several dB of jitter even in an empty
+room), so someone standing still near the board, off the direct line, may not be detected; walking through the path is.
 
 **Status.** Developed and tested on an ESP32 (rev v3.1) with ESP-IDF 5.3.5, an SSD1306 OLED and a 2.4 GHz router.
 Tested end to end: firmware builds and flashes, boot log as in step 11, dashboard with live data. The zone map is

@@ -17,7 +17,13 @@
       "Bash(.venv/bin/python -m pip install -q fastapi \"uvicorn[standard]\" websockets)",
       "Bash(.venv/bin/python -c ' *)",
       "mcp__plugin_ecc_chrome-devtools__new_page",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(.venv/bin/python -m ui.server --port /dev/cu.usbserial-110)",
+      "Bash(curl -s http://127.0.0.1:8000/api/state)",
+      "Bash(.venv/bin/python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('mode',d['mode'],'| connected',d['connected'],'| csi packets/s',d['csi_rate']\\)\")",
+      "Read(//dev/**)",
+      "Bash(system_profiler SPUSBDataType)",
+      "Bash(sed -n '/config MOTION_WINDOW/,/config MOTION_HOLD_MS/p' main/Kconfig.projbuild)"
     ]
   }
 }

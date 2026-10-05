@@ -49,7 +49,7 @@ def main():
     if args.plot:
         import matplotlib.pyplot as plt
         plt.ion()
-        fig, ax = plt.subplots()
+        _, ax = plt.subplots()
         im = ax.imshow(np.zeros((cfg["grid"]["rows"], cfg["grid"]["cols"])),
                        vmin=0, vmax=1, cmap="viridis")
         ttl = ax.set_title("")

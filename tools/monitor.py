@@ -36,7 +36,7 @@ def main():
     if args.plot:
         import matplotlib.pyplot as plt
         plt.ion()
-        fig, ax = plt.subplots()
+        _, ax = plt.subplots()
         line, = ax.plot([], [])
         ax.set_xlabel("sample"); ax.set_ylabel("RSSI (dBm)")
 

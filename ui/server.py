@@ -116,7 +116,6 @@ def demo_reader(h: Hub) -> None:
     shape = np.array([20 + 8 * math.sin(i / 7) + 4 * math.cos(i / 3) for i in range(62)])
     hold_until = 0.0
     last_motion = 0.0
-    state = 0
     while True:
         t = time.monotonic() - t0
         ph = t % 44

@@ -4,6 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterator
 
+import numpy as np
+
 from .csi import parse_csi_line
 
 
@@ -56,7 +58,6 @@ def replay_frames(path: str | Path) -> Iterator[tuple]:
                 r = line.strip().split(",")
                 if len(r) >= 4:
                     try:
-                        yield int(float(r[1])), int(float(r[2])), \
-                            __import__("numpy").array(r[3:], dtype="float32")
+                        yield int(float(r[1])), int(float(r[2])), np.array(r[3:], dtype="float32")
                     except ValueError:
                         continue

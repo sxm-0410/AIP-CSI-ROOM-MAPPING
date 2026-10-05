@@ -4,66 +4,13 @@ menu "Example Configuration"
         string "WiFi SSID"
         default "myssid"
         help
-            SSID (network name) for the example to connect to.
+            Name of the 2.4 GHz network the board joins.
 
     config EXAMPLE_WIFI_PASSWORD
         string "WiFi Password"
         default "mypassword"
         help
-            WiFi password (WPA or WPA2) for the example to use.
-
-    choice EXAMPLE_SCAN_METHOD
-        prompt "scan method"
-        default EXAMPLE_WIFI_FAST_SCAN
-        help
-            scan method for the esp32 to use
-
-        config EXAMPLE_WIFI_FAST_SCAN
-            bool "fast"
-        config EXAMPLE_WIFI_ALL_CHANNEL_SCAN
-            bool "all"
-    endchoice
-
-    choice EXAMPLE_SORT_METHOD
-        prompt "sort method"
-        default EXAMPLE_WIFI_CONNECT_AP_BY_SIGNAL
-        help
-            sort method for the esp32 to use
-
-        config EXAMPLE_WIFI_CONNECT_AP_BY_SIGNAL
-            bool "rssi"
-        config EXAMPLE_WIFI_CONNECT_AP_BY_SECURITY
-            bool "authmode"
-    endchoice
-
-    config EXAMPLE_FAST_SCAN_THRESHOLD
-        bool "fast scan threshold"
-        default y
-        help
-            wifi fast scan threshold
-
-    config EXAMPLE_FAST_SCAN_MINIMUM_SIGNAL
-        int "fast scan minimum rssi"
-        depends on EXAMPLE_FAST_SCAN_THRESHOLD
-        range -127 0
-        default -127
-        help
-            rssi is use to measure the signal
-
-    choice EXAMPLE_FAST_SCAN_WEAKEST_AUTHMODE
-        prompt "fast scan weakest authmode"
-        depends on EXAMPLE_FAST_SCAN_THRESHOLD
-        default EXAMPLE_FAST_SCAN_WEAKEST_AUTHMODE_OPEN
-
-        config EXAMPLE_FAST_SCAN_WEAKEST_AUTHMODE_OPEN
-            bool "open"
-        config EXAMPLE_FAST_SCAN_WEAKEST_AUTHMODE_WEP
-            bool "wep"
-        config EXAMPLE_FAST_SCAN_WEAKEST_AUTHMODE_WPA
-            bool "wpa"
-        config EXAMPLE_FAST_SCAN_WEAKEST_AUTHMODE_WPA2
-            bool "wpa2"
-    endchoice
+            WiFi password (WPA or WPA2).
 
 endmenu
 
@@ -84,21 +31,24 @@ menu "Motion Detector Configuration"
     config MOTION_WINDOW
         int "Sliding window (samples)"
         range 4 64
-        default 20
+        default 10
+        help
+            Samples per variation window. Smaller reacts faster (10 = 1 s at 10 Hz).
 
     config MOTION_CALIB_SAMPLES
         int "Calibration length (windows)"
-        range 10 2000
+        range 10 200
         default 100
         help
-            Empty-room baseline is learned at boot (LED blinks). Keep the room empty.
+            Empty-path baseline is learned at boot (LED blinks, ~11 s). Keep the path clear.
+            Only the quietest 60% of this period sets the limits, so a short walk-by is tolerated.
 
     config MOTION_K_SIGMA_X10
         int "Threshold sensitivity k (x10)"
         range 10 100
         default 40
         help
-            Threshold = mean + k * sigma of the empty-room window std. Lower = more sensitive.
+            Limit = median + k * robust spread of the empty-path variation. Lower = more sensitive.
 
     config MOTION_MIN_STD_MARGIN_X10
         int "Minimum std margin above baseline (dB x10)"
@@ -106,11 +56,12 @@ menu "Motion Detector Configuration"
         default 5
 
     config MOTION_LEVEL_SHIFT_DB
-        int "Mean RSSI shift that also counts as motion (dB)"
+        int "Smallest RSSI level shift that counts as an object (dB)"
         range 1 30
-        default 4
+        default 2
         help
-            Catches someone standing still in the path (signal level drops).
+            Catches an object left in the path (the signal level moves). The board learns the
+            real limit from the empty path; this is the lowest value it may use.
 
     config MOTION_HOLD_MS
         int "LED hold time after last motion (ms)"

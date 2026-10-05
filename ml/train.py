@@ -43,13 +43,12 @@ def evaluate(sessions, kind="rf"):
         tr, te = g != gi, g == gi
         m = build(kind).fit(X[tr], y[tr])
         preds[te] = m.predict(X[te])
-    vals, counts = np.unique(y, return_counts=True)
+    _, counts = np.unique(y, return_counts=True)
     return (float((preds == y).mean()), float(counts.max() / counts.sum()),
             confusion_matrix(y, preds, labels=classes), classes)
 
 
 def train_final(sessions, kind="rf"):
-    import joblib  # noqa: F401  (fail early if missing)
     mask = pp.active_mask(np.concatenate([a for s in sessions for a in s.values()]))
     X, y, _ = build_xy(sessions, mask)
     model = build(kind).fit(X, y)
