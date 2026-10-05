@@ -1,0 +1,9 @@
+# Zones for the room map. Place the ESP32 and router, then stand in each zone.
+# pos = [row, col] on the display grid (row 0 = far from ESP32). Edit to match your room.
+grid: {rows: 2, cols: 2}
+zones:
+  A: {pos: [0, 0], label: "near router"}
+  B: {pos: [0, 1], label: "far side"}
+  C: {pos: [1, 0], label: "near ESP32"}
+  D: {pos: [1, 1], label: "doorway"}
+# "empty" is always recorded as its own class.

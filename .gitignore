@@ -18,3 +18,10 @@ models/*.npz
 .idea/
 .vscode/
 *.swp
+
+# ESP-IDF / logs
+build/
+logs/
+sdkconfig.old
+managed_components/
+sdkconfig

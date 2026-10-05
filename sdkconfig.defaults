@@ -1,0 +1,17 @@
+# Applied by ESP-IDF whenever sdkconfig is (re)generated: first configure, after deleting
+# sdkconfig, or after `idf.py set-target`. Wi-Fi name/password are NOT set here: put them in
+# sdkconfig via `idf.py menuconfig` (Example Configuration) so they never get committed.
+
+# Console at 460800 baud. The CSI stream is ~25 KB/s of text; 115200 is far too slow, and
+# 921600 was unreliable through this board's USB-serial chip. The monitor speed follows this.
+# CONFIG_ESP_CONSOLE_UART_DEFAULT is not set
+CONFIG_ESP_CONSOLE_UART_CUSTOM=y
+CONFIG_ESP_CONSOLE_UART_CUSTOM_NUM_0=y
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=460800
+
+# Raw CSI output (also pulls in CONFIG_ESP_WIFI_CSI_ENABLED) and a gentle router ping so the
+# router does not throttle us (100 ms = 10 CSI packets per second).
+CONFIG_CSI_STREAM=y
+CONFIG_ESP_WIFI_CSI_ENABLED=y
+CONFIG_MOTION_PROBE_TRAFFIC=y
+CONFIG_MOTION_PROBE_MS=100

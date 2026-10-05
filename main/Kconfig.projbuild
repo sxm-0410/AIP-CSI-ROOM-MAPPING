@@ -1,0 +1,173 @@
+menu "Example Configuration"
+
+    config EXAMPLE_WIFI_SSID
+        string "WiFi SSID"
+        default "myssid"
+        help
+            SSID (network name) for the example to connect to.
+
+    config EXAMPLE_WIFI_PASSWORD
+        string "WiFi Password"
+        default "mypassword"
+        help
+            WiFi password (WPA or WPA2) for the example to use.
+
+    choice EXAMPLE_SCAN_METHOD
+        prompt "scan method"
+        default EXAMPLE_WIFI_FAST_SCAN
+        help
+            scan method for the esp32 to use
+
+        config EXAMPLE_WIFI_FAST_SCAN
+            bool "fast"
+        config EXAMPLE_WIFI_ALL_CHANNEL_SCAN
+            bool "all"
+    endchoice
+
+    choice EXAMPLE_SORT_METHOD
+        prompt "sort method"
+        default EXAMPLE_WIFI_CONNECT_AP_BY_SIGNAL
+        help
+            sort method for the esp32 to use
+
+        config EXAMPLE_WIFI_CONNECT_AP_BY_SIGNAL
+            bool "rssi"
+        config EXAMPLE_WIFI_CONNECT_AP_BY_SECURITY
+            bool "authmode"
+    endchoice
+
+    config EXAMPLE_FAST_SCAN_THRESHOLD
+        bool "fast scan threshold"
+        default y
+        help
+            wifi fast scan threshold
+
+    config EXAMPLE_FAST_SCAN_MINIMUM_SIGNAL
+        int "fast scan minimum rssi"
+        depends on EXAMPLE_FAST_SCAN_THRESHOLD
+        range -127 0
+        default -127
+        help
+            rssi is use to measure the signal
+
+    choice EXAMPLE_FAST_SCAN_WEAKEST_AUTHMODE
+        prompt "fast scan weakest authmode"
+        depends on EXAMPLE_FAST_SCAN_THRESHOLD
+        default EXAMPLE_FAST_SCAN_WEAKEST_AUTHMODE_OPEN
+
+        config EXAMPLE_FAST_SCAN_WEAKEST_AUTHMODE_OPEN
+            bool "open"
+        config EXAMPLE_FAST_SCAN_WEAKEST_AUTHMODE_WEP
+            bool "wep"
+        config EXAMPLE_FAST_SCAN_WEAKEST_AUTHMODE_WPA
+            bool "wpa"
+        config EXAMPLE_FAST_SCAN_WEAKEST_AUTHMODE_WPA2
+            bool "wpa2"
+    endchoice
+
+endmenu
+
+menu "Motion Detector Configuration"
+
+    config MOTION_LED_GPIO
+        int "LED GPIO"
+        range 0 39
+        default 19
+        help
+            GPIO driving the detection LED (through a resistor).
+
+    config MOTION_SAMPLE_MS
+        int "RSSI sample period (ms)"
+        range 20 1000
+        default 100
+
+    config MOTION_WINDOW
+        int "Sliding window (samples)"
+        range 4 64
+        default 20
+
+    config MOTION_CALIB_SAMPLES
+        int "Calibration length (windows)"
+        range 10 2000
+        default 100
+        help
+            Empty-room baseline is learned at boot (LED blinks). Keep the room empty.
+
+    config MOTION_K_SIGMA_X10
+        int "Threshold sensitivity k (x10)"
+        range 10 100
+        default 40
+        help
+            Threshold = mean + k * sigma of the empty-room window std. Lower = more sensitive.
+
+    config MOTION_MIN_STD_MARGIN_X10
+        int "Minimum std margin above baseline (dB x10)"
+        range 1 100
+        default 5
+
+    config MOTION_LEVEL_SHIFT_DB
+        int "Mean RSSI shift that also counts as motion (dB)"
+        range 1 30
+        default 4
+        help
+            Catches someone standing still in the path (signal level drops).
+
+    config MOTION_HOLD_MS
+        int "LED hold time after last motion (ms)"
+        range 0 30000
+        default 2000
+
+    config MOTION_PROBE_TRAFFIC
+        bool "Ping the router so RSSI/CSI refresh often"
+        default y
+
+    config MOTION_PROBE_MS
+        int "Ping interval (ms) = CSI packet rate"
+        depends on MOTION_PROBE_TRAFFIC
+        range 5 1000
+        default 100
+        help
+            100 ms = 10 CSI packets/s. Faster pings can trip router flood protection.
+
+    config CSI_STREAM
+        bool "Stream raw CSI over serial (for data collection / ML)"
+        default n
+        select ESP_WIFI_CSI_ENABLED
+        help
+            Needs the console at 460800 baud (set in sdkconfig). Lines:
+            CSI_DATA,seq,ms,rssi,len,[b0,b1,...]
+
+    config MOTION_OLED
+        bool "Show status on an SSD1306 OLED (I2C)"
+        default y
+
+    config MOTION_OLED_HEIGHT
+        int "OLED height in pixels (64 or 32)"
+        depends on MOTION_OLED
+        default 64
+
+    config MOTION_OLED_SDA
+        int "OLED SDA GPIO"
+        depends on MOTION_OLED
+        default 21
+        help
+            If nothing answers on this pin pair at boot, common pin pairs are scanned
+            and the working one is logged ("OLED found at ... SDA=.. SCL=..").
+
+    config MOTION_OLED_SCL
+        int "OLED SCL GPIO"
+        depends on MOTION_OLED
+        default 22
+
+    config MOTION_OLED_ADDR
+        hex "OLED I2C address"
+        depends on MOTION_OLED
+        default 0x3C
+
+    config MOTION_OLED_RST
+        int "OLED reset GPIO (-1 = none; Heltec boards use 16)"
+        depends on MOTION_OLED
+        range -1 39
+        default -1
+
+endmenu

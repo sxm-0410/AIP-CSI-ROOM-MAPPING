@@ -1,21 +1,11 @@
-# Core pipeline
-numpy>=1.24
-scipy>=1.10          # Butterworth (falls back to EMA if absent)
-scikit-learn>=1.3    # PCA + MLP fallback
-
-# Model (deck: PyTorch 1D-CNN). If torch is absent, an sklearn MLP is used.
-torch>=2.2
-
-# Config (optional; baked-in defaults work without it)
-pyyaml>=6.0
-
-# Live demo (FastAPI + WebSockets)
-fastapi>=0.110
-uvicorn>=0.29
-websockets>=12.0
-
-# ESP32 backend, used later (optional)
-# pyserial>=3.5
-
-# Dev
-pytest>=8.0
+pyserial
+matplotlib
+numpy
+scipy
+scikit-learn
+joblib
+pyyaml
+pytest
+fastapi
+uvicorn[standard]
+websockets

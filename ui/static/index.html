@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi Path Monitor</title>
+<style>
+  :root {
+    --bg:#0b1220; --panel:#121b2e; --panel2:#17233b; --line:#22314f;
+    --ink:#e8eefc; --muted:#8da2c8; --accent:#38bdf8;
+    --ok:#34d399; --warn:#fbbf24; --bad:#f87171; --idle:#64748b;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { max-width:1180px; margin:0 auto; padding:20px 20px 32px; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  h1 { font-size:1.15rem; margin:0; font-weight:650; letter-spacing:.2px; }
+  .sub { color:var(--muted); font-size:.82rem; margin-top:2px; }
+  .pill { display:inline-flex; align-items:center; gap:8px; padding:6px 12px; border-radius:999px;
+    background:var(--panel); border:1px solid var(--line); font-size:.78rem; color:var(--muted); }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--idle); }
+  .pill.live .dot { background:var(--ok); box-shadow:0 0 0 0 rgba(52,211,153,.6); animation:ping 1.8s infinite; }
+  .pill.bad .dot { background:var(--bad); }
+  @keyframes ping { 70% { box-shadow:0 0 0 8px rgba(52,211,153,0); } 100% { box-shadow:0 0 0 0 rgba(52,211,153,0); } }
+  .demo { display:none; margin:14px 0 0; padding:9px 14px; border-radius:10px; font-size:.82rem;
+    background:rgba(251,191,36,.12); border:1px solid rgba(251,191,36,.45); color:var(--warn); }
+  .demo.on { display:block; }
+
+  .grid { display:grid; gap:14px; margin-top:16px; grid-template-columns:repeat(12,1fr); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+  .status { grid-column:span 5; display:flex; flex-direction:column; justify-content:center; min-height:190px;
+    transition:border-color .25s, background .25s; }
+  .tiles { grid-column:span 7; display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
+  .lab { color:var(--muted); font-size:.74rem; text-transform:uppercase; letter-spacing:.08em; }
+  .val { font-size:1.65rem; font-weight:650; margin-top:6px; font-variant-numeric:tabular-nums; }
+  .val small { font-size:.8rem; color:var(--muted); font-weight:500; margin-left:3px; }
+  .hint { color:var(--muted); font-size:.75rem; margin-top:4px; }
+
+  .state-name { font-size:2rem; font-weight:750; letter-spacing:.4px; margin:6px 0 4px; }
+  .state-sub { color:var(--muted); font-size:.9rem; min-height:1.3em; }
+  .status.s-clear { border-color:rgba(52,211,153,.5); background:linear-gradient(160deg,rgba(52,211,153,.10),var(--panel) 60%); }
+  .status.s-clear .state-name { color:var(--ok); }
+  .status.s-alarm { border-color:rgba(248,113,113,.7); background:linear-gradient(160deg,rgba(248,113,113,.18),var(--panel) 65%);
+    animation:glow 1.1s ease-in-out infinite alternate; }
+  .status.s-alarm .state-name { color:var(--bad); }
+  .status.s-learn { border-color:rgba(251,191,36,.45); }
+  .status.s-learn .state-name { color:var(--warn); }
+  .status.s-none .state-name { color:var(--idle); }
+  @keyframes glow { from { box-shadow:0 0 0 0 rgba(248,113,113,.0);} to { box-shadow:0 0 28px 2px rgba(248,113,113,.28);} }
+  .bar { height:6px; border-radius:6px; background:var(--panel2); overflow:hidden; margin-top:14px; display:none; }
+  .bar > i { display:block; height:100%; width:0; background:var(--warn); transition:width .25s; }
+
+  .chart { grid-column:span 6; }
+  .chart.wide { grid-column:span 12; }
+  .chart h2, .log h2 { font-size:.8rem; margin:0 0 10px; color:var(--muted); font-weight:600;
+    text-transform:uppercase; letter-spacing:.08em; display:flex; justify-content:space-between; gap:12px; }
+  .chart h2 span:last-child, .log h2 span:last-child { text-transform:none; letter-spacing:0; font-weight:400; }
+  canvas { width:100%; height:190px; display:block; }
+  canvas.tall { height:230px; }
+  .log { grid-column:span 12; }
+  .events { max-height:150px; overflow:auto; font-size:.85rem; font-variant-numeric:tabular-nums; }
+  .ev { display:flex; gap:12px; padding:6px 0; border-top:1px solid var(--line); }
+  .ev:first-child { border-top:0; }
+  .ev .t { color:var(--muted); min-width:74px; }
+  .ev.bad b { color:var(--bad); } .ev.ok b { color:var(--ok); } .ev.warn b { color:var(--warn); }
+  .empty { color:var(--muted); padding:6px 0; }
+  footer { color:var(--muted); font-size:.76rem; margin-top:16px; line-height:1.5; }
+
+  @media (max-width:900px) {
+    .status,.tiles,.chart { grid-column:span 12; }
+    .tiles { grid-template-columns:repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Wi-Fi Path Monitor</h1>
+      <div class="sub">ESP32 &harr; router &middot; detects objects and people crossing the signal path</div>
+    </div>
+    <div class="pill" id="conn"><span class="dot"></span><span id="connTxt">connecting&hellip;</span></div>
+  </header>
+  <div class="demo" id="demo"><b>DEMO MODE</b> &mdash; this is simulated data, not a live board.</div>
+
+  <div class="grid">
+    <section class="card status s-none" id="status">
+      <div class="lab">Path status</div>
+      <div class="state-name" id="stateName">NO SIGNAL</div>
+      <div class="state-sub" id="stateSub">Waiting for the board&hellip;</div>
+      <div class="bar" id="bar"><i id="barFill"></i></div>
+    </section>
+
+    <div class="tiles">
+      <div class="tile"><div class="lab">Signal (RSSI)</div>
+        <div class="val"><span id="vRssi">&ndash;</span><small>dBm</small></div>
+        <div class="hint" id="hBase">baseline &ndash;</div></div>
+      <div class="tile"><div class="lab">Change vs empty path</div>
+        <div class="val"><span id="vDelta">&ndash;</span><small>dB</small></div>
+        <div class="hint">negative = signal blocked</div></div>
+      <div class="tile"><div class="lab">Variation</div>
+        <div class="val"><span id="vStd">&ndash;</span><small id="vThr"></small></div>
+        <div class="hint">alarm when above the limit</div></div>
+      <div class="tile"><div class="lab">Detections</div>
+        <div class="val"><span id="vCount">0</span></div>
+        <div class="hint" id="hLast">none yet</div></div>
+      <div class="tile"><div class="lab">Time in alarm</div>
+        <div class="val"><span id="vAlarm">0</span><small>s</small></div>
+        <div class="hint">this session</div></div>
+      <div class="tile"><div class="lab">CSI packets</div>
+        <div class="val"><span id="vRate">&ndash;</span><small>/s</small></div>
+        <div class="hint">channel measurements</div></div>
+    </div>
+
+    <section class="card chart"><h2><span>Signal strength &middot; last 60 s</span><span id="legR"></span></h2>
+      <canvas id="cRssi"></canvas></section>
+    <section class="card chart"><h2><span>Signal variation &middot; last 60 s</span><span id="legS"></span></h2>
+      <canvas id="cStd"></canvas></section>
+    <section class="card chart wide"><h2><span>Channel disturbance across 62 subcarriers &middot; last 12 s</span>
+      <span>brighter = this part of the channel is changing</span></h2>
+      <canvas id="cHeat" class="tall"></canvas></section>
+
+    <section class="card log"><h2><span>Event log</span><span></span></h2>
+      <div class="events" id="events"><div class="empty">No events yet.</div></div></section>
+  </div>
+
+  <footer>
+    How it works: the ESP32 measures the router's Wi-Fi signal ~10&times;/s (strength) and ~50&times;/s (per-subcarrier
+    channel state, CSI). It first learns what the empty path looks like. A person or object crossing the path
+    changes the signal; when the variation or the level shift exceeds the learned limit the path is flagged.
+    To re-learn the empty path, press the <b>EN</b> button on the board and keep the path clear for ~12 s.
+  </footer>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const MAXS = 600, HEAT_COLS = 120, NSUB = 62;
+const S = { t:[], rssi:[], std:[], thr:[], base:[], state:[] };
+let pct = 0;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let count = 0, alarmMs = 0, lastState = null, alarmStart = null, lastSampleT = 0, lastDetect = null;
+let heat = [], ema = null, lastCsiKey = "";
+
+/* ---------- canvas helpers ---------- */
+function fit(c) {
+  const r = c.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(r.width * d)), h = Math.max(1, Math.round(r.height * d));
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  const g = c.getContext("2d"); g.setTransform(d, 0, 0, d, 0, 0);
+  return { g, w: r.width, h: r.height };
+}
+function chart(canvas, series, o) {
+  const { g, w, h } = fit(canvas), L = 38, R = 8, T = 8, B = 18;
+  g.clearRect(0, 0, w, h);
+  const n = S.t.length;
+  if (n < 2) return;
+  let lo = o.min, hi = o.max;
+  if (lo == null || hi == null) {
+    const all = series.flatMap(s => s.data.filter(v => v != null));
+    lo = lo ?? Math.min(...all) - 2; hi = hi ?? Math.max(...all) + 2;
+  }
+  if (hi - lo < 1e-6) hi = lo + 1;
+  const x0 = i => L + ((i + (MAXS - n)) / (MAXS - 1)) * (w - L - R);
+  const Y = v => T + (1 - (v - lo) / (hi - lo)) * (h - T - B);
+  g.strokeStyle = css("--line"); g.fillStyle = css("--muted"); g.font = "11px system-ui"; g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) {
+    const v = lo + (hi - lo) * k / 4, y = Y(v);
+    g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
+    g.fillText(v.toFixed(o.dec ?? 0), 2, y + 4);
+  }
+  g.fillStyle = "rgba(248,113,113,.16)";            // detection bands
+  let s0 = null;
+  for (let i = 0; i <= n; i++) {
+    const on = i < n && S.state[i] === 2;
+    if (on && s0 === null) s0 = i;
+    if (!on && s0 !== null) { g.fillRect(x0(s0), T, Math.max(2, x0(i - 1) - x0(s0)), h - T - B); s0 = null; }
+  }
+  g.fillStyle = css("--muted");
+  g.fillText("-60 s", L, h - 4); g.fillText("now", w - R - 22, h - 4);
+  for (const s of series) {
+    g.beginPath(); g.lineWidth = s.width || 2; g.strokeStyle = s.color; g.setLineDash(s.dash || []);
+    let pen = false;
+    for (let i = 0; i < n; i++) {
+      const v = s.data[i];
+      if (v == null) { pen = false; continue; }
+      const x = x0(i), y = Y(Math.min(hi, Math.max(lo, v)));
+      pen ? g.lineTo(x, y) : g.moveTo(x, y); pen = true;
+    }
+    g.stroke(); g.setLineDash([]);
+  }
+}
+const ramp = [[11,18,32],[56,189,248],[251,191,36],[248,113,113]];
+function rampColor(t) {
+  t = Math.max(0, Math.min(1, t)) * (ramp.length - 1);
+  const i = Math.min(ramp.length - 2, Math.floor(t)), f = t - i;
+  return ramp[i].map((v, k) => Math.round(v + (ramp[i + 1][k] - v) * f));
+}
+function drawHeat() {
+  const c = $("cHeat"), { g, w, h } = fit(c);
+  g.clearRect(0, 0, w, h);
+  const off = document.createElement("canvas"); off.width = HEAT_COLS; off.height = NSUB;
+  const og = off.getContext("2d"), img = og.createImageData(HEAT_COLS, NSUB);
+  for (let x = 0; x < HEAT_COLS; x++) {
+    const col = heat[heat.length - HEAT_COLS + x];
+    for (let y = 0; y < NSUB; y++) {
+      const [r, gg, b] = rampColor(col ? col[y] : 0), p = (y * HEAT_COLS + x) * 4;
+      img.data[p] = r; img.data[p + 1] = gg; img.data[p + 2] = b; img.data[p + 3] = 255;
+    }
+  }
+  og.putImageData(img, 0, 0);
+  g.imageSmoothingEnabled = true;
+  g.drawImage(off, 0, 0, w, h);
+}
+
+/* ---------- data ---------- */
+function pushSample(d, replay) {                       // replay = history on connect: no events/counters
+  S.t.push(d.t); S.rssi.push(d.rssi); S.std.push(d.std);
+  S.thr.push(d.thr); S.base.push(d.base); S.state.push(d.state);
+  for (const k in S) if (S[k].length > MAXS) S[k].shift();
+  pct = d.pct ?? pct;
+  lastSampleT = performance.now();
+  if (replay) { lastState = d.state; return; }
+  if (lastState !== d.state) {                         // event log on state transitions
+    const now = new Date().toLocaleTimeString();
+    if (d.state === 2) { count++; alarmStart = performance.now(); lastDetect = now;
+      addEvent("bad", now, "Object detected", "path disturbed"); }
+    else if (lastState === 2) {
+      const dur = ((performance.now() - alarmStart) / 1000).toFixed(1);
+      addEvent("ok", now, "Path clear", `disturbance lasted ${dur} s`); alarmStart = null;
+    } else if (d.state === 1 && lastState === 0) addEvent("ok", now, "Baseline learned", "monitoring started");
+    else if (d.state === 0 && lastState !== null) addEvent("warn", now, "Learning empty path", "keep the path clear");
+    lastState = d.state;
+  }
+  if (d.state === 2) alarmMs += 100;
+}
+function addEvent(cls, time, title, note) {
+  const box = $("events");
+  if (box.querySelector(".empty")) box.innerHTML = "";
+  const el = document.createElement("div"); el.className = "ev " + cls;
+  el.innerHTML = `<span class="t">${time}</span><span><b>${title}</b> &mdash; ${note}</span>`;
+  box.prepend(el);
+  while (box.children.length > 60) box.removeChild(box.lastChild);
+}
+let scale = null;
+function pushCsi(amp) {
+  if (!amp || amp.length !== NSUB) return;
+  const live = amp.map(a => a > 0.5);                  // null/guard subcarriers are always ~0
+  const act = amp.filter((a, i) => live[i]);
+  if (act.length < 10) return;
+  // Per-frame normalisation: the receiver gain jumps frame to frame; only the *shape* is informative.
+  const mean = act.reduce((x, y) => x + y, 0) / act.length;
+  const nrm = amp.map((a, i) => live[i] ? a / mean : 0);
+  if (!ema) ema = nrm.slice();
+  const dev = nrm.map((v, i) => live[i] ? Math.abs(v - ema[i]) : 0);
+  const md = dev.reduce((x, y) => x + y, 0) / act.length;
+  // Scale = typical quiet-level deviation, learned slowly and not while an alarm is active.
+  if (scale === null) scale = Math.max(md, 0.01);
+  else if (lastState !== 2) scale += 0.01 * (Math.max(md, 0.005) - scale);
+  ema = ema.map((e, i) => e + 0.05 * (nrm[i] - e));
+  heat.push(dev.map(d => Math.min(1, d / (4 * scale))));
+  if (heat.length > HEAT_COLS * 2) heat.shift();
+}
+
+/* ---------- UI ---------- */
+function setStatus(cls, name, sub) {
+  $("status").className = "card status " + cls;
+  $("stateName").textContent = name; $("stateSub").textContent = sub;
+}
+const avg = (a, n) => { const s = a.slice(-n).filter(v => v != null); return s.length ? s.reduce((x, y) => x + y, 0) / s.length : null; };
+function render(conn) {
+  const n = S.t.length, stale = performance.now() - lastSampleT > 3000;
+  const st = n ? S.state[n - 1] : null, bar = $("bar");
+  bar.style.display = "none";
+  if (!n || stale || !conn) setStatus("s-none", "NO SIGNAL", conn ? "No data from the board for 3 s" : "Waiting for the board…");
+  else if (st === 0) {
+    setStatus("s-learn", "LEARNING", "Keep the path between router and board clear");
+    bar.style.display = "block"; $("barFill").style.width = pct + "%";
+  } else if (st === 2) {
+    const dur = alarmStart ? ((performance.now() - alarmStart) / 1000).toFixed(1) : "0.0";
+    setStatus("s-alarm", "OBJECT DETECTED", `Path disturbed for ${dur} s`);
+  } else setStatus("s-clear", "PATH CLEAR", "Signal steady — nothing crossing the path");
+
+  if (n) {
+    const r = avg(S.rssi, 5), b = S.base[n - 1], th = S.thr[n - 1], sd = S.std[n - 1];
+    $("vRssi").textContent = r.toFixed(0);
+    $("hBase").textContent = b != null ? `baseline ${b.toFixed(1)} dBm` : "baseline –";
+    $("vDelta").textContent = b != null && st !== 0 ? (r - b > 0 ? "+" : "") + (r - b).toFixed(1) : "–";
+    $("vStd").textContent = sd.toFixed(2);
+    $("vThr").textContent = th != null && st !== 0 ? `/ ${th.toFixed(2)}` : "";
+  }
+  $("vCount").textContent = count;
+  $("hLast").textContent = lastDetect ? `last at ${lastDetect}` : "none yet";
+  $("vAlarm").textContent = (alarmMs / 1000).toFixed(0);
+
+  chart($("cRssi"), [{ data: S.rssi, color: css("--accent") },
+                     { data: S.base, color: css("--muted"), dash: [5, 4], width: 1.5 }], { dec: 0 });
+  const thrs = S.thr.filter(v => v != null);
+  chart($("cStd"), [{ data: S.std, color: css("--accent") },
+                    { data: S.thr, color: css("--warn"), dash: [5, 4], width: 1.5 }],
+        { min: 0, max: Math.max(2, ...S.std, ...thrs) * 1.15, dec: 1 });
+  $("legR").textContent = "solid: signal · dashed: empty-path baseline";
+  $("legS").textContent = "dashed: alarm limit · red band: detection";
+  drawHeat();
+}
+
+/* ---------- connection ---------- */
+let ws, wsOpen = false, first = true;
+function connect() {
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.onopen = () => { wsOpen = true; first = true; };
+  ws.onclose = () => { wsOpen = false; $("conn").className = "pill bad";
+    $("connTxt").textContent = "dashboard disconnected"; setTimeout(connect, 1500); };
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    for (const d of m.samples) pushSample(d, first);
+    first = false;
+    if (m.csi) { const key = m.csi.join(","); if (key !== lastCsiKey) { lastCsiKey = key; pushCsi(m.csi); } }
+    $("demo").classList.toggle("on", m.mode === "demo");
+    $("conn").className = "pill " + (m.connected ? "live" : "bad");
+    $("connTxt").textContent = m.connected ? (m.mode === "demo" ? "demo data" : "live · board connected")
+                                           : "board not sending";
+    $("vRate").textContent = m.connected ? Math.round(m.csi_rate) : "–";
+    render(m.connected);
+  };
+}
+connect();
+window.addEventListener("resize", () => render(wsOpen));
+</script>
+</body>
+</html>
