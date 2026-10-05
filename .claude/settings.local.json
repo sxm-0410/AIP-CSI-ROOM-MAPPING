@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/python -c \"import numpy,sklearn,scipy;print\\(numpy.__version__,sklearn.__version__\\)\")",
+      "Bash(.venv/bin/python -c \"import serial\")",
+      "Bash(cd ~/esp/oled_scan && ls; ls main; cat main/*.c | head -120; grep -n \"I2C\\\\|SDA\\\\|SCL\\\\|GPIO\" main/*.c | head -20; ls managed_components components 2>/dev/null; cat main/idf_component.yml 2>/dev/null)",
+      "Read(//Users/sampathbageyawadi/esp/oled_scan/**)",
+      "Bash(cd ~/esp && ls blink_id/main wifi_scan/main; grep -rn \"sda\\\\|SDA\\\\|scl\\\\|0x3C\\\\|ssd1306\" blink_id/main 2>/dev/null | head; grep -n \"found\\\\|FOUND\" -r oled_scan/build/log 2>/dev/null | head -3; ls ESP32-CSI-Tool | head -3)",
+      "Read(//Users/sampathbageyawadi/esp/**)",
+      "Bash(python3 -)",
+      "Bash(grep -n \"^menu\\\\|^endmenu\\\\|config MOTION_OLED$\\\\|config CSI_STREAM\" main/Kconfig.projbuild)",
+      "Bash(.venv/bin/python -m py_compile tools/monitor.py)",
+      "Bash(cd ~/.espressif/v5.3.5/esp-idf && grep -n \"MONITOR_BAUD\" components/esptool_py/Kconfig.projbuild | head -20; grep -n -B2 -A8 \"config ESP_CONSOLE_UART_BAUDRATE\" components/esp_system/Kconfig | head -30; grep -n \"ESP_CONSOLE_UART_CUSTOM\\\\|ESP_CONSOLE_UART_NUM\" components/esp_system/Kconfig | head)",
+      "Read(//Users/sampathbageyawadi/.espressif/v5.3.5/esp-idf/**)",
+      "Bash(.venv/bin/python -)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(.venv/bin/python -m pip install -q fastapi \"uvicorn[standard]\" websockets)",
+      "Bash(.venv/bin/python -c ' *)",
+      "mcp__plugin_ecc_chrome-devtools__new_page",
+      "Bash(git commit *)"
+    ]
+  }
+}
